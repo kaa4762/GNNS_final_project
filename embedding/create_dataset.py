@@ -68,9 +68,9 @@ if __name__ == "__main__":
     
 
     # Define dataset path
-    zip_path = './data/0.zip'
+    zip_path = '../data/0.zip'
     #define labels path
-    csv_path = './data/PADCHEST_labels.csv'
+    csv_path = '../data/PADCHEST_labels.csv'
     # Run the functions
     image_list = extract_images(zip_path)
     df_filtered = load_csv_data(csv_path, image_list)

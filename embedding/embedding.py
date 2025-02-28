@@ -9,6 +9,10 @@ import kornia
 import zipfile
 import pickle
 
+""" 
+    CLIP embedder classes adapted from https://github.com/UCSB-NLP-Chang/DiffusionDisentanglement/blob/main/ldm/modules/encoders/modules.py#L5
+"""
+
 class FrozenClipTextEmbedder(nn.Module):
     """
     Uses the CLIP transformer encoder for text.
@@ -80,8 +84,15 @@ class FrozenClipImageEmbedder(nn.Module):
         x = (x - self.mean[:, None, None]) / self.std[:, None, None]  # Normalize
         return x
 
+
+""" 
+    Create text descriptions 
+"""
 def summarize_labels(labels, max_items=3):
-    """ Summarizes a long label list while keeping key findings. This is because there is a limit to the input of the CLIP text emnbedder """
+    """ Summarizes a long label list while keeping key findings. This is because there is a limit to the input of the CLIP text embedder 
+    
+    TODO: review if this is the best approach to deal with long descriptions """
+
     key_conditions = labels[:max_items]  # Take first 3 labels
     other_count = max(0, len(labels) - max_items)
 
@@ -92,7 +103,7 @@ def summarize_labels(labels, max_items=3):
     
 def create_neutral_desc(sample):
     """Creates a neutral medical descriptor from a dataset entry
-     sample: (filename, img_array, orientation, labels)"""
+     sample: Shape [filename, img_array, orientation, labels] """
     filename, img_array, orientation, labels = sample
     
     # Convert label string to a proper list
@@ -106,7 +117,7 @@ def create_neutral_desc(sample):
 def create_style_rich_desc(sample):
     """
     Creates a style-rich descriptor with more context
-    sample: (filename, img_array, orientation, labels)
+    sample: Shape [filename, img_array, orientation, labels]
     """
     filename, img_array, orientation, labels = sample
     
@@ -123,16 +134,19 @@ def load_data_add_descriptions(pickle_filename):
     with open(pickle_filename, "rb") as f:
         dataset = pickle.load(f)
         imgs_w_desc = list()
-        for sample in dataset:
+        for sample in dataset[:10]: # just process 10 for faster testing
             neutral = create_neutral_desc(sample)
             style_rich = create_style_rich_desc(sample)
             imgs_w_desc.append([sample[0], sample[1], neutral, style_rich]) #filename, img, neutral desc, syle rich desc
     print("Descriptions added; first sample: ", imgs_w_desc[0])
     return imgs_w_desc
 
+"""
+    Create embeddings
+"""
 def add_embeddings(imgs_w_desc):
     """ turn the description strings and images into embeddings
-    imgs_w_desc: (filename, img_array, neutral_desc, style_rich_desc)"""
+    imgs_w_desc: Shape [[filename, img_array, neutral_desc, style_rich_desc]]"""
     clip_image_embedder = FrozenClipImageEmbedder()
     clip_text_embedder = FrozenClipTextEmbedder()
     # Freeze models for inference
@@ -157,11 +171,58 @@ def add_embeddings(imgs_w_desc):
     print("Embeddings added; first sample: ", embedded_data[0])
     return embedded_data
 
+"""
+    Soft combination of embeddings according to Disentanglement paper (Wu et al., 2022)
+"""
+def soft_combine_embeddings(c0, c1, lambda_t):
+    """
+    c0 (Tensor) The neutral text embedding. Shape: [batch, dim]
+    c1 (Tensor): The style-rich text embedding. Shape: [batch, dim]
+    lambda_t (Tensor): The combination weight (0 to 1). Shape: [T] or [T, 1]
+    
+    c_t (Tensor): The combined embedding over time. Shape: [T, batch, dim]
+    """
+    # Ensure lambda_t has correct shape for broadcasting
+    lambda_t = lambda_t.view(-1, 1, 1)  # Shape: [T, 1, 1]
+
+    # Linearly combine the embeddings over time
+    c_t = lambda_t * c1 + (1 - lambda_t) * c0  # Shape: [T, batch, dim]
+    
+    return c_t
+
+def get_lambda_schedule(T, mode="linear"):
+    """
+    Generates a lambda schedule over T timesteps
+    """
+    if mode == "linear":
+        return torch.linspace(0, 1, steps=T)  # Linearly increasing
+    elif mode == "sigmoid":
+        x = torch.linspace(-6, 6, steps=T)  # Sigmoid range
+        return torch.sigmoid(x)  # Smooth start and end
+    elif mode == "cosine":
+        return (1 - torch.cos(torch.linspace(0, 3.1416, steps=T))) / 2  # Cosine ease-in-out
+    else:
+        raise ValueError("Invalid mode! Choose 'linear', 'sigmoid', or 'cosine'.")
+
+
+def test_soft_combined_embeddings(embedded_data_list, T=50):
+    """
+    embedded_data_list: Shape [[filename, img_embedding, neutral_desc_embedding, style_rich_desc_embedding]] 
+    """
+    for sample in embedded_data_list:
+        lambda_t = get_lambda_schedule(T, mode="sigmoid")  # TODO: Try different schedules!
+
+        # Compute the soft combination of embeddings
+        c_t = soft_combine_embeddings(sample[2], sample[3], lambda_t)  
+        #print(c_t)
+        print(c_t.shape) #torch.Size([50, 1, 768])
+
 
 if __name__ == "__main__":
     """ load the pkl dataset and create embeddings for text and images """
-    pickle_filename = "./data/dataset.pkl"
+    pickle_filename = '\GNNS_final_project\data\dataset.pkl'
     data_with_desc = load_data_add_descriptions(pickle_filename)
     data_w_embeddings = add_embeddings(data_with_desc)
+    test_soft_combined_embeddings(data_w_embeddings)
 
     
