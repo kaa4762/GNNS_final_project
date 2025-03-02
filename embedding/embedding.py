@@ -138,7 +138,9 @@ def load_data_add_descriptions(pickle_filename):
             neutral = create_neutral_desc(sample)
             style_rich = create_style_rich_desc(sample)
             imgs_w_desc.append([sample[0], sample[1], neutral, style_rich]) #filename, img, neutral desc, syle rich desc
-    print("Descriptions added; first sample: ", imgs_w_desc[0])
+    
+    for sample in imgs_w_desc[:10]:
+        print(sample[0], sample[2], sample[3])
     return imgs_w_desc
 
 """
