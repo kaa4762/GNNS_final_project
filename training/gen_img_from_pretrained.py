@@ -52,7 +52,7 @@ def generate_images_from_embeddings_visualize(embedded_data_list, T=20, model_id
     return all_generated_images  # Return all images for further processing
 
 
-def generate_images_from_embeddings(embedded_data_list, T=50, model_id="Nihirc/Prompt2MedImage"):
+def generate_images_from_embeddings(embedded_data_list, T=20, model_id="Nihirc/Prompt2MedImage"):
     """
     Generates images using soft-combined embeddings across denoising steps.
     embedded_data_list: [[filename, img_embedding, neutral_desc_embedding, style_rich_desc_embedding]]
@@ -65,16 +65,16 @@ def generate_images_from_embeddings(embedded_data_list, T=50, model_id="Nihirc/P
     all_generated_images = {}  # Store images per sample
     for sample in embedded_data_list:
         filename = sample[0]  # Get filename for reference
-        lambda_t = embedding.get_lambda_schedule(T, mode="sigmoid")  
-        c_t = embedding.soft_combine_embeddings(sample[2], sample[3], lambda_t)  # Soft combination
+        lambda_t = embedding.get_lambda_schedule(T, mode="sigmoid").to(DEVICE)
+        c_t = embedding.soft_combine_embeddings(sample[2], sample[3], lambda_t).to(DEVICE)  # Soft combination
 
         generated_images = []  # Store images for this sample
 
         for t in range(T):  # Simulating diffusion steps
             with torch.no_grad():  # No gradients needed for inference
-                empty_negative_prompt = torch.zeros_like(c_t[t]) # dummy because pipeline expects 2 embeddings
+                empty_negative_prompt = torch.zeros_like(c_t[t]).to(DEVICE) # dummy because pipeline expects 2 embeddings
 
-                img = pipe(prompt_embeds=c_t[t].unsqueeze(0), negative_prompt_embeds=empty_negative_prompt.unsqueeze(0), num_inference_steps=50).images[0]
+                img = pipe(prompt_embeds=c_t[t].unsqueeze(0), negative_prompt_embeds=empty_negative_prompt.unsqueeze(0), num_inference_steps=20).images[0]
                 generated_images.append(img)  # Store generated image
 
         all_generated_images[filename] = generated_images  # Store all images
@@ -128,14 +128,14 @@ def train_lambda(embedded_data_list, T=50, epochs=10, lr=1e-3):
     return lambda_t
 
 import random
-#from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split
 
 def train_lambda_train_test(embedded_data_list, T=50, epochs=10, lr=1e-3, test_size=0.2):
     """
     Optimizes lambda_t for better disentanglement, with train-test split.
     """
     # Split data into training and testing sets
-    train_data, test_data = None##train_test_split(embedded_data_list, test_size=test_size, random_state=42)
+    train_data, test_data = train_test_split(embedded_data_list, test_size=test_size, random_state=42)
 
     # Trainable λₜ
     lambda_t = embedding.get_lambda_schedule(T, mode="sigmoid").to(DEVICE).requires_grad_()
@@ -183,7 +183,7 @@ def train_lambda_train_test(embedded_data_list, T=50, epochs=10, lr=1e-3, test_s
         test_losses.append(avg_test_loss)
 
         print(f"Epoch {epoch+1}/{epochs}, Train Loss: {avg_train_loss:.4f}, Test Loss: {avg_test_loss:.4f}")
-
+        plot_losses(train_losses, test_losses)
     return lambda_t, train_losses, test_losses
 
 if __name__ == "__main__":
@@ -192,5 +192,6 @@ if __name__ == "__main__":
     data_with_desc = embedding.load_data_add_descriptions(pickle_filename)
     data_w_embeddings = embedding.add_embeddings(data_with_desc)
 
-    generate_images_from_embeddings_visualize(data_w_embeddings)
+    #generate_images_from_embeddings_visualize(data_w_embeddings)
+    train_lambda_train_test(data_w_embeddings)
 

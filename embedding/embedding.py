@@ -118,6 +118,8 @@ def create_neutral_desc(sample):
     label_text = summarize_labels(labels)  # Summarize findings
     if label_text == "normal":
         return f"An X-ray of a patient with no findings."
+    if label_text == "unchanged":
+        return f"An X-ray of a patient with unchanged findings."
     return f"An X-ray of a patient with {label_text}."
 
 def create_style_rich_desc(sample):
@@ -133,6 +135,8 @@ def create_style_rich_desc(sample):
     label_text = summarize_labels(labels)  # Summarize findings
     if label_text == "normal":
         return f"An X-ray of a patient with no findings taken in {orientation} orientation."
+    if label_text == "unchanged":
+        return f"An X-ray of a patient with unchanged findings taken in {orientation} orientation."
     return f"An X-ray of a patient with {label_text}, taken in {orientation} orientation."
 
 def load_data_add_descriptions(pickle_filename):
@@ -140,7 +144,7 @@ def load_data_add_descriptions(pickle_filename):
     with open(pickle_filename, "rb") as f:
         dataset = pickle.load(f)
         imgs_w_desc = list()
-        for sample in dataset[:1]: # just process 10 for faster testing
+        for sample in dataset[:10]: # just process 10 for faster testing
             neutral = create_neutral_desc(sample)
             style_rich = create_style_rich_desc(sample)
             imgs_w_desc.append([sample[0], sample[1], neutral, style_rich]) #filename, img, neutral desc, syle rich desc
