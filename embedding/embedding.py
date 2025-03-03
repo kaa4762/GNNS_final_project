@@ -9,6 +9,8 @@ import kornia
 import zipfile
 import pickle
 
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu' 
+
 """ 
     CLIP embedder classes adapted from https://github.com/UCSB-NLP-Chang/DiffusionDisentanglement/blob/main/ldm/modules/encoders/modules.py#L5
 """
@@ -17,10 +19,10 @@ class FrozenClipTextEmbedder(nn.Module):
     """
     Uses the CLIP transformer encoder for text.
     """
-    def __init__(self, version='ViT-L/14', device="cpu", max_length=77, n_repeat=1, normalize=True):
+    def __init__(self, version='ViT-L/14', device=DEVICE, max_length=77, n_repeat=1, normalize=True):
         super().__init__()
-        self.model, _ = clip.load(version, jit=False, device="cpu")
-        self.device = device
+        self.model, _ = clip.load(version, jit=False, device=DEVICE)
+        self.device = DEVICE
         self.max_length = max_length
         self.n_repeat = n_repeat
         self.normalize = normalize
@@ -47,18 +49,18 @@ class FrozenClipTextEmbedder(nn.Module):
 
 class FrozenClipImageEmbedder(nn.Module):
     """Uses the CLIP image encoder."""
-    def __init__(self, model="ViT-L/14", device='cpu', antialias=False):
+    def __init__(self, model="ViT-L/14", device=DEVICE, antialias=False):
         super().__init__()
-        self.model, _ = clip.load(model, device=device)
-        self.device = device
+        self.model, _ = clip.load(model, device=DEVICE)
+        self.device = DEVICE
         self.antialias = antialias
         self.register_buffer('mean', torch.Tensor([0.48145466, 0.4578275, 0.40821073]), persistent=False)
         self.register_buffer('std', torch.Tensor([0.26862954, 0.26130258, 0.27577711]), persistent=False)
 
     def forward(self, x):
         """Encodes the image into embeddings."""
-        x = self.preprocess(x)
-        return self.model.encode_image(x)
+        x = self.preprocess(x).to(self.device)
+        return self.model.encode_image(x).to(self.device)
 
     def encode(self, x):
         """Encodes an image into CLIP embedding."""
@@ -72,18 +74,22 @@ class FrozenClipImageEmbedder(nn.Module):
         if x.ndim == 2:  # Grayscale images (H, W)
             x = x.unsqueeze(0)  # Add channel dimension → (1, H, W)
 
-        if x.shape[0] == 1:  # Convert grayscale to RGB by repeating channels #TODO save them as RGB in dataset?
+        if x.shape[0] == 1:  # Convert grayscale to RGB by repeating channels
             x = x.repeat(3, 1, 1)  # Now shape is (3, H, W)
 
         x = x / 255.0  # Normalize pixel values to [0,1]
 
+        # 💡 Make sure x is on the same device as self.mean
+        x = x.to(self.mean.device)
+
         x = kornia.geometry.resize(x.unsqueeze(0), (224, 224),
-                                interpolation='bicubic', align_corners=True,
-                                antialias=self.antialias)  # Add batch dim
+                                    interpolation='bicubic', align_corners=True,
+                                    antialias=self.antialias)  # Add batch dim
 
-        x = (x - self.mean[:, None, None]) / self.std[:, None, None]  # Normalize
+        # 💡 Move self.mean and self.std to the same device as x
+        x = (x - self.mean.to(x.device)[:, None, None]) / self.std.to(x.device)[:, None, None]
+
         return x
-
 
 """ 
     Create text descriptions 
@@ -111,7 +117,7 @@ def create_neutral_desc(sample):
     # Join labels into a sentence
     label_text = summarize_labels(labels)  # Summarize findings
     if label_text == "normal":
-        return f"An X-ray of a patient with no findings"
+        return f"An X-ray of a patient with no findings."
     return f"An X-ray of a patient with {label_text}."
 
 def create_style_rich_desc(sample):
@@ -134,7 +140,7 @@ def load_data_add_descriptions(pickle_filename):
     with open(pickle_filename, "rb") as f:
         dataset = pickle.load(f)
         imgs_w_desc = list()
-        for sample in dataset[:10]: # just process 10 for faster testing
+        for sample in dataset[:1]: # just process 10 for faster testing
             neutral = create_neutral_desc(sample)
             style_rich = create_style_rich_desc(sample)
             imgs_w_desc.append([sample[0], sample[1], neutral, style_rich]) #filename, img, neutral desc, syle rich desc
@@ -162,14 +168,13 @@ def add_embeddings(imgs_w_desc):
             filename, img_array, neutral_desc, style_rich_desc = sample
 
             # Convert text to embeddings
-            neutral_embedding = clip_text_embedder.encode([neutral_desc]).squeeze(1)  # Shape: (1, D) → (D,)
-            style_embedding = clip_text_embedder.encode([style_rich_desc]).squeeze(1)
+            neutral_embedding = clip_text_embedder.encode([neutral_desc]).squeeze(1).to(DEVICE)  # Shape: (1, D) → (D,)
+            style_embedding = clip_text_embedder.encode([style_rich_desc]).squeeze(1).to(DEVICE)
 
             # Convert image to embedding
-            img_embedding = clip_image_embedder.forward(img_array).squeeze(0)  # Remove batch dim
-
+            img_embedding = clip_image_embedder.forward(img_array).squeeze(0).to(DEVICE)  
             # Store results
-            embedded_data.append((filename, img_embedding.cpu(), neutral_embedding.cpu(), style_embedding.cpu()))
+            embedded_data.append((filename, img_embedding, neutral_embedding, style_embedding))
     print("Embeddings added; first sample: ", embedded_data[0])
     return embedded_data
 
