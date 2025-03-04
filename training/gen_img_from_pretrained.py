@@ -7,7 +7,8 @@ from compute_loss import compute_losses
 from diffusers import StableDiffusionPipeline
 import torch
 from matplotlib import pyplot as plt
-
+import random
+from sklearn.model_selection import train_test_split
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu' 
 # Disable NSFW checker in pipeline since some of the chest xrays are accidentally flagged which returns a black image
 def dummy_checker(images, **kwargs):
@@ -127,16 +128,14 @@ def train_lambda(embedded_data_list, T=50, epochs=10, lr=1e-3):
 
     return lambda_t
 
-import random
-from sklearn.model_selection import train_test_split
 
-def train_lambda_train_test(embedded_data_list, T=50, epochs=10, lr=1e-3, test_size=0.2):
+def train_lambda_train_test(embedded_data_list, T=50, epochs=10, lr=1e-3, test_size=0.2, save_path="C:\\Users\katha\OneDrive\Desktop\GNNS_project\code\GNNS_final_project\training"):
     """
     Optimizes lambda_t for better disentanglement, with train-test split.
     """
     # Split data into training and testing sets
     train_data, test_data = train_test_split(embedded_data_list, test_size=test_size, random_state=42)
-
+    clip_image_embedder = embedding.FrozenClipImageEmbedder()
     # Trainable λₜ
     lambda_t = embedding.get_lambda_schedule(T, mode="sigmoid").to(DEVICE).requires_grad_()
     
@@ -154,11 +153,12 @@ def train_lambda_train_test(embedded_data_list, T=50, epochs=10, lr=1e-3, test_s
         # Training loop
         for sample in train_data:
             generated_images = generate_images_from_embeddings([sample], T)
-            img_neutral, img_stylized = sample[1], sample[3]
             img_interpolated = generated_images[-1]
-
-            loss = compute_losses(img_neutral, img_interpolated, img_stylized, sample[2], sample[3])
-
+            desc_neutral, desc_stylized = sample[2], sample[3]
+            img_interpolated = clip_image_embedder.forward(img_interpolated).to(DEVICE).squeeze(0)  
+            # TODO fix this
+            #loss = compute_losses(sample[1], img_interpolated_emb, sample[1], sample[2], sample[3])
+            loss = compute_losses.clip_loss(img_interpolated, desc_neutral, desc_stylized)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -169,10 +169,11 @@ def train_lambda_train_test(embedded_data_list, T=50, epochs=10, lr=1e-3, test_s
         with torch.no_grad():
             for sample in test_data:
                 generated_images = generate_images_from_embeddings([sample], T)
-                img_neutral, img_stylized = sample[1], sample[3]
+                img_neutral, img_stylized = sample[2], sample[3]
                 img_interpolated = generated_images[-1]
-
-                loss = compute_losses(img_neutral, img_interpolated, img_stylized, sample[2], sample[3])
+                # TODO fix this
+                #loss = compute_losses(img_neutral, img_interpolated, img_stylized, sample[2], sample[3])
+                loss = compute_losses.clip_loss(img_interpolated, desc_neutral, desc_stylized)
                 total_test_loss += loss.item()
 
         # Store average losses per epoch
@@ -183,8 +184,37 @@ def train_lambda_train_test(embedded_data_list, T=50, epochs=10, lr=1e-3, test_s
         test_losses.append(avg_test_loss)
 
         print(f"Epoch {epoch+1}/{epochs}, Train Loss: {avg_train_loss:.4f}, Test Loss: {avg_test_loss:.4f}")
-        plot_losses(train_losses, test_losses)
+    
+    save_dict = {
+        "lambda_t": lambda_t.detach().cpu(),  # Move to CPU before saving
+        "optimizer_state": optimizer.state_dict(),
+        "train_losses": train_losses,
+        "test_losses": test_losses
+    }
+    torch.save(save_dict, save_path)
+    print(f"Model saved at: {save_path} 🐾")
+    plot_losses(train_losses, test_losses)
+
+
     return lambda_t, train_losses, test_losses
+
+
+def load_lambda_model(load_path="lambda_model.pth"):
+    """
+    Loads the saved lambda model.
+    """
+    if not os.path.exists(load_path):
+        print(f"No saved model found at {load_path}!")
+        return None, None
+
+    checkpoint = torch.load(load_path, map_location=DEVICE)
+    lambda_t = checkpoint["lambda_t"].to(DEVICE).requires_grad_()
+    optimizer = torch.optim.Adam([lambda_t])  # Recreate optimizer
+    optimizer.load_state_dict(checkpoint["optimizer_state"])
+
+    print(f"Model loaded from: {load_path}")
+
+    return lambda_t, optimizer
 
 if __name__ == "__main__":
     """ load the pkl dataset and create embeddings for text and images """
