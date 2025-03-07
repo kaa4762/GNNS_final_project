@@ -9,12 +9,14 @@ import torch
 from matplotlib import pyplot as plt
 import random
 from sklearn.model_selection import train_test_split
+from torchvision import transforms
+
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu' 
 # Disable NSFW checker in pipeline since some of the chest xrays are accidentally flagged which returns a black image
 def dummy_checker(images, **kwargs):
     return images, [False] * len(images)# Always return images without flagging them
 
-def generate_images_from_embeddings_visualize(embedded_data_list, T=20, model_id="Nihirc/Prompt2MedImage"):
+def generate_images_from_embeddings_visualize(embedded_data_list, T, model_id="Nihirc/Prompt2MedImage"):
     """
     Generates and visualizes images using soft-combined embeddings across denoising steps.
     embedded_data_list: [[filename, img_embedding, neutral_desc_embedding, style_rich_desc_embedding]]
@@ -53,7 +55,7 @@ def generate_images_from_embeddings_visualize(embedded_data_list, T=20, model_id
     return all_generated_images  # Return all images for further processing
 
 
-def generate_images_from_embeddings(embedded_data_list, T=20, model_id="Nihirc/Prompt2MedImage"):
+def generate_images_from_embeddings(embedded_data_list, T, model_id="Nihirc/Prompt2MedImage"):
     """
     Generates images using soft-combined embeddings across denoising steps.
     embedded_data_list: [[filename, img_embedding, neutral_desc_embedding, style_rich_desc_embedding]]
@@ -97,39 +99,60 @@ def plot_losses(train_losses, test_losses):
     plt.grid(True)
     plt.show()
 
-def train_lambda(embedded_data_list, T=50, epochs=10, lr=1e-3):
+def train_lambda(embedded_data_list, T, epochs=10, lr=1e-3):
     """
     Optimizes lambda_t for better disentanglement.
     """
-    lambda_t = embedding.get_lambda_schedule(T, mode="sigmoid").to(DEVICE).requires_grad_()  # Trainable λₜ
-
+    # Split data into training and testing sets
+    clip_image_embedder = embedding.FrozenClipImageEmbedder()
+    # Trainable λₜ
+    lambda_t = embedding.get_lambda_schedule(T, mode="sigmoid").to(DEVICE).requires_grad_()
+    
+    # Optimizer
     optimizer = torch.optim.Adam([lambda_t], lr=lr)
 
+    # Store losses for plotting
+    train_losses = []
+    test_losses = []
+
     for epoch in range(epochs):
-        total_loss = 0
+        total_train_loss = 0
+        total_test_loss = 0
 
+        # Training loop
         for sample in embedded_data_list:
-            # Generate images using current λₜ
             generated_images = generate_images_from_embeddings([sample], T)
-            img_neutral, img_stylized = sample[1], sample[3]  # Original neutral & style embeddings
-            img_interpolated = generated_images[-1]  # Use last interpolated image
+            img_interpolated = generated_images[-1]
+            desc_neutral, desc_stylized = sample[2], sample[3]
 
-            # Compute loss
-            loss = compute_losses(img_neutral, img_interpolated, img_stylized, sample[2], sample[3])
+            # Define a transformation to convert PIL image -> Tensor
+            transform = transforms.Compose([
+                transforms.ToTensor(),  # Converts PIL image to tensor
+                transforms.Resize((224, 224)),  # Resize to CLIP input size
+                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Normalize
+            ])
 
-            # Backprop & update λₜ
+            # Apply transformation
+            img_interpolated = transform(img_interpolated).unsqueeze(0).to(DEVICE)  # Add batch dim
+
+            # Now pass it to the CLIP embedder
+            img_interpolated = clip_image_embedder.forward(img_interpolated).squeeze(0)
+
+            # TODO fix this
+            #loss = compute_losses(sample[1], img_interpolated_emb, sample[1], sample[2], sample[3])
+            loss = compute_losses.clip_loss(img_interpolated, desc_neutral, desc_stylized)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-            total_loss += loss.item()
-        
-        print(f"Epoch {epoch+1}/{epochs}, Loss: {total_loss:.4f}")
+            total_train_loss += loss.item()
+
+        print(f"Epoch {epoch+1}/{epochs}, Loss: {total_train_loss:.4f}")
 
     return lambda_t
 
 
-def train_lambda_train_test(embedded_data_list, T=50, epochs=10, lr=1e-3, test_size=0.2, save_path="C:\\Users\katha\OneDrive\Desktop\GNNS_project\code\GNNS_final_project\training"):
+def train_lambda_train_test(embedded_data_list, T, epochs=10, lr=1e-3, test_size=0.2, save_path="C:\\Users\katha\OneDrive\Desktop\GNNS_project\code\GNNS_final_project\training"):
     """
     Optimizes lambda_t for better disentanglement, with train-test split.
     """
@@ -155,7 +178,20 @@ def train_lambda_train_test(embedded_data_list, T=50, epochs=10, lr=1e-3, test_s
             generated_images = generate_images_from_embeddings([sample], T)
             img_interpolated = generated_images[-1]
             desc_neutral, desc_stylized = sample[2], sample[3]
-            img_interpolated = clip_image_embedder.forward(img_interpolated).to(DEVICE).squeeze(0)  
+
+            # Define a transformation to convert PIL image -> Tensor
+            transform = transforms.Compose([
+                transforms.ToTensor(),  # Converts PIL image to tensor
+                transforms.Resize((224, 224)),  # Resize to CLIP input size
+                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Normalize
+            ])
+
+            # Apply transformation
+            img_interpolated = transform(img_interpolated).unsqueeze(0).to(DEVICE)  # Add batch dim
+
+            # Now pass it to the CLIP embedder
+            img_interpolated = clip_image_embedder.forward(img_interpolated).squeeze(0)
+
             # TODO fix this
             #loss = compute_losses(sample[1], img_interpolated_emb, sample[1], sample[2], sample[3])
             loss = compute_losses.clip_loss(img_interpolated, desc_neutral, desc_stylized)
@@ -171,6 +207,18 @@ def train_lambda_train_test(embedded_data_list, T=50, epochs=10, lr=1e-3, test_s
                 generated_images = generate_images_from_embeddings([sample], T)
                 img_neutral, img_stylized = sample[2], sample[3]
                 img_interpolated = generated_images[-1]
+                # Define a transformation to convert PIL image -> Tensor
+                transform = transforms.Compose([
+                    transforms.ToTensor(),  # Converts PIL image to tensor
+                    transforms.Resize((224, 224)),  # Resize to CLIP input size
+                    transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Normalize
+                ])
+
+                #  Apply transformation
+                img_interpolated = transform(img_interpolated).unsqueeze(0).to(DEVICE)  # Add batch dim
+
+                # Now pass it to the CLIP embedder
+                img_interpolated = clip_image_embedder.forward(img_interpolated).squeeze(0)
                 # TODO fix this
                 #loss = compute_losses(img_neutral, img_interpolated, img_stylized, sample[2], sample[3])
                 loss = compute_losses.clip_loss(img_interpolated, desc_neutral, desc_stylized)
@@ -192,7 +240,7 @@ def train_lambda_train_test(embedded_data_list, T=50, epochs=10, lr=1e-3, test_s
         "test_losses": test_losses
     }
     torch.save(save_dict, save_path)
-    print(f"Model saved at: {save_path} 🐾")
+    print(f"Model saved at: {save_path}")
     plot_losses(train_losses, test_losses)
 
 
@@ -223,5 +271,6 @@ if __name__ == "__main__":
     data_w_embeddings = embedding.add_embeddings(data_with_desc)
 
     #generate_images_from_embeddings_visualize(data_w_embeddings)
-    train_lambda_train_test(data_w_embeddings)
+    #train_lambda_train_test(data_w_embeddings) 
+    train_lambda(data_w_embeddings[:1]) # test only one for faster testing
 

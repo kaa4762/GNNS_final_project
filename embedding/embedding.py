@@ -8,6 +8,9 @@ from transformers import AutoTokenizer, AutoModel
 import kornia
 import zipfile
 import pickle
+import torchvision.transforms as transforms
+from PIL import Image
+
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu' 
 
@@ -70,11 +73,16 @@ class FrozenClipImageEmbedder(nn.Module):
         """ Resize and normalize image for CLIP """
         if isinstance(x, np.ndarray):
             x = torch.tensor(x, dtype=torch.float32)  # Convert NumPy to Tensor
-
+        if isinstance(x, Image.Image):
+            x = transforms.ToTensor()(x)  # Converts to (3, H, W), normalized to [0,1]
+        print('ndims:', x.ndim, ' shape:' , x.shape)
         if x.ndim == 2:  # Grayscale images (H, W)
             x = x.unsqueeze(0)  # Add channel dimension → (1, H, W)
+            x = x.repeat(3, 1, 1)  # Convert to 3 channels → (3, H, W)
+            print('first if ndims:', x.ndim, ' shape:', x.shape)
 
         if x.shape[0] == 1:  # Convert grayscale to RGB by repeating channels
+            print('second if ndims:', x.ndim, ' shape:', x.shape)
             x = x.repeat(3, 1, 1)  # Now shape is (3, H, W)
 
         x = x / 255.0  # Normalize pixel values to [0,1]
