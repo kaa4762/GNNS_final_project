@@ -125,10 +125,10 @@ def create_neutral_desc(sample):
     # Join labels into a sentence
     label_text = summarize_labels(labels)  # Summarize findings
     if label_text == "normal":
-        return f"An X-ray of a patient with no findings."
+        return f"A chest X-ray of a patient with no findings."
     if label_text == "unchanged":
-        return f"An X-ray of a patient with unchanged findings."
-    return f"An X-ray of a patient with {label_text}."
+        return f"A chest X-ray of a patient with unchanged findings."
+    return f"A chest X-ray of a patient with {label_text}."
 
 def create_style_rich_desc(sample):
     """
@@ -142,10 +142,10 @@ def create_style_rich_desc(sample):
     # Join labels into a sentence
     label_text = summarize_labels(labels)  # Summarize findings
     if label_text == "normal":
-        return f"An X-ray of a patient with no findings taken in {orientation} orientation."
+        return f"A chest X-ray of a patient with no findings taken in {orientation} orientation."
     if label_text == "unchanged":
-        return f"An X-ray of a patient with unchanged findings taken in {orientation} orientation."
-    return f"An X-ray of a patient with {label_text}, taken in {orientation} orientation."
+        return f"A chest X-ray of a patient with unchanged findings taken in {orientation} orientation."
+    return f"A chest X-ray of a patient with {label_text}, taken in {orientation} orientation."
 
 def load_data_add_descriptions(pickle_filename):
     """ Adds description strings to the dataset which are later turned into embeddings """

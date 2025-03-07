@@ -16,6 +16,9 @@ def extract_images(zip_path):
                 with archive.open(file_name) as image_file:
                     print('processing ', file_name)
                     img_array = cv2.imdecode(np.frombuffer(image_file.read(), np.uint8), cv2.IMREAD_GRAYSCALE)
+                    # Resize the image to 224x224 in hopes of making the dataset smaller in terms of storage
+                    img_array = cv2.resize(img_array, (224, 224), interpolation=cv2.INTER_AREA)
+                    
                     image_list.append((file_name, img_array))    
     return image_list
 
@@ -77,13 +80,12 @@ if __name__ == "__main__":
     zip_path = "C://Users/katha/OneDrive/Desktop/GNNS_project/code/GNNS_final_project/data/0.zip"
     #define labels path
     csv_path = 'C://Users/katha/OneDrive/Desktop/GNNS_project/code/GNNS_final_project/data/PADCHEST_labels.csv'
-    # Run the functions
     image_list = extract_images(zip_path)
     df_filtered = load_csv_data(csv_path, image_list)
     dataset = create_dataset(image_list, df_filtered)
 
-    save_as_pickle_small(dataset)
+    save_as_pickle(dataset)
 
-    # Print some dataset examplcces
+    # Print some dataset examples
     for i in range(5):
         print(dataset[i])
