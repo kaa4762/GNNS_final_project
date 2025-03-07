@@ -87,14 +87,14 @@ class FrozenClipImageEmbedder(nn.Module):
 
         x = x / 255.0  # Normalize pixel values to [0,1]
 
-        # 💡 Make sure x is on the same device as self.mean
+        # Make sure x is on the same device as self.mean
         x = x.to(self.mean.device)
 
         x = kornia.geometry.resize(x.unsqueeze(0), (224, 224),
                                     interpolation='bicubic', align_corners=True,
                                     antialias=self.antialias)  # Add batch dim
 
-        # 💡 Move self.mean and self.std to the same device as x
+        # Move self.mean and self.std to the same device as x
         x = (x - self.mean.to(x.device)[:, None, None]) / self.std.to(x.device)[:, None, None]
 
         return x

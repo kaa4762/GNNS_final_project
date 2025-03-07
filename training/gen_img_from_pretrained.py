@@ -104,7 +104,7 @@ def train_lambda(embedded_data_list, T, epochs=10, lr=1e-3):
     Optimizes lambda_t for better disentanglement.
     """
     # Split data into training and testing sets
-    clip_image_embedder = embedding.FrozenClipImageEmbedder()
+    clip_image_embedder = embedding.__path__FrozenClipImageEmbedder()
     # Trainable λₜ
     lambda_t = embedding.get_lambda_schedule(T, mode="sigmoid").to(DEVICE).requires_grad_()
     
@@ -114,13 +114,15 @@ def train_lambda(embedded_data_list, T, epochs=10, lr=1e-3):
     # Store losses for plotting
     train_losses = []
     test_losses = []
-
+    print("Start training loop")
     for epoch in range(epochs):
         total_train_loss = 0
         total_test_loss = 0
 
         # Training loop
         for sample in embedded_data_list:
+            print("Training loop: process sample ", sample[0])
+            print(sample)
             generated_images = generate_images_from_embeddings([sample], T)
             img_interpolated = generated_images[-1]
             desc_neutral, desc_stylized = sample[2], sample[3]
@@ -133,7 +135,7 @@ def train_lambda(embedded_data_list, T, epochs=10, lr=1e-3):
             ])
 
             # Apply transformation
-            img_interpolated = transform(img_interpolated).unsqueeze(0).to(DEVICE)  # Add batch dim
+            img_interpolated = transform(img_interpolated).to(DEVICE)  
 
             # Now pass it to the CLIP embedder
             img_interpolated = clip_image_embedder.forward(img_interpolated).squeeze(0)
@@ -152,7 +154,7 @@ def train_lambda(embedded_data_list, T, epochs=10, lr=1e-3):
     return lambda_t
 
 
-def train_lambda_train_test(embedded_data_list, T, epochs=10, lr=1e-3, test_size=0.2, save_path="C:\\Users\katha\OneDrive\Desktop\GNNS_project\code\GNNS_final_project\training"):
+def train_lambda_train_test(embedded_data_list, T, save_path, epochs=10, lr=1e-3, test_size=0.2):
     """
     Optimizes lambda_t for better disentanglement, with train-test split.
     """
@@ -266,11 +268,12 @@ def load_lambda_model(load_path="lambda_model.pth"):
 
 if __name__ == "__main__":
     """ load the pkl dataset and create embeddings for text and images """
-    pickle_filename = 'C:\\Users\katha\OneDrive\Desktop\GNNS_project\code\GNNS_final_project\data\dataset.pkl'
+    pickle_filename = 'C:\\Users\katha\OneDrive\Desktop\GNNS_project\code\GNNS_final_project\data\dataset_small.pkl'
     data_with_desc = embedding.load_data_add_descriptions(pickle_filename)
     data_w_embeddings = embedding.add_embeddings(data_with_desc)
-
+    T=20
+    save_path = 'C:\\Users\katha\OneDrive\Desktop\GNNS_project\code\GNNS_final_project\training'
     #generate_images_from_embeddings_visualize(data_w_embeddings)
-    #train_lambda_train_test(data_w_embeddings) 
-    train_lambda(data_w_embeddings[:1]) # test only one for faster testing
+    train_lambda_train_test(data_w_embeddings, T, save_path) 
+    #train_lambda([data_w_embeddings[0]]) # test only one for faster testing
 

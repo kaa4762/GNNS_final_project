@@ -52,7 +52,13 @@ def create_dataset(image_list, df_filtered):
 
 def save_as_pickle(dataset):
     import pickle
-    with open("./data/dataset.pkl", "wb") as f:
+    with open("C://Users/katha/OneDrive/Desktop/GNNS_project/code/GNNS_final_project/data/dataset.pkl", "wb") as f:
+        pickle.dump(dataset, f)
+
+def save_as_pickle_small(dataset):
+    dataset = dataset[:10]
+    import pickle
+    with open("C://Users/katha/OneDrive/Desktop/GNNS_project/code/GNNS_final_project/data/dataset_small.pkl", "wb") as f:
         pickle.dump(dataset, f)
 
 if __name__ == "__main__":
@@ -68,16 +74,16 @@ if __name__ == "__main__":
     
 
     # Define dataset path
-    zip_path = '../data/0.zip'
+    zip_path = "C://Users/katha/OneDrive/Desktop/GNNS_project/code/GNNS_final_project/data/0.zip"
     #define labels path
-    csv_path = '../data/PADCHEST_labels.csv'
+    csv_path = 'C://Users/katha/OneDrive/Desktop/GNNS_project/code/GNNS_final_project/data/PADCHEST_labels.csv'
     # Run the functions
     image_list = extract_images(zip_path)
     df_filtered = load_csv_data(csv_path, image_list)
     dataset = create_dataset(image_list, df_filtered)
 
-    save_as_pickle(dataset)
+    save_as_pickle_small(dataset)
 
-    # Print some dataset examples
+    # Print some dataset examplcces
     for i in range(5):
         print(dataset[i])
