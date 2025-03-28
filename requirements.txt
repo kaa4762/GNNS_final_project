@@ -12,3 +12,4 @@ kornia
 Pillow
 matplotlib
 scikit-learn
+pandas
