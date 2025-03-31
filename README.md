@@ -8,7 +8,7 @@ Final Project for lecture Generative Neural Networks for the Sciences
   - a small sample of our custom .pkl-file with 10 instances
   - a script to create the .pkl-file from the downloaded PADCHEST data
 
-### lambda_training: first approach to optimize lambda for disentanglement
+### lambda_training: first approach to optimize lambda for disentanglement in single view setting
   - main_colab.ipynb contains all the code that is distributed among the subfolders and .py-files and is also the file we used to conduct our experiments
   - main.py contains functions to run training, re-training, inference and data generation
     
@@ -23,3 +23,17 @@ Final Project for lecture Generative Neural Networks for the Sciences
   - plots: contains the plots based on the logs which are also used in the report as well as the .py-file with the plotting functions
 
   - generated_imgs: contains all visualizations of different lambda schedules, as well as the comparison before and after training with T=6 which was used in the report
+
+### two-view: second approach with two view setting (PA to L)
+  - contains the notebooks for training with a two view setting
+
+### c-VAE-Dict: baseline with a cVAE
+  - models: contains decoder, encoder and cVAE file which combines the two#
+    
+  - outputs: contains alpha vectors and labels, the reconstructions and transfers
+    
+  - dataloader.py: data preprocessing of the PADCHEST data
+    
+  - train.py: training function for the cVAE
+    
+  - c-VAE-Dict.ipynb: full notebook with the complete analysis of the cVAE baseline which was used in the report
